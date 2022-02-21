@@ -1,0 +1,176 @@
+
+#TEXT_FILES+="|*.tmx"
+
+Import mojo
+Import xml
+
+'The TTileset class holds the image information for a tileset.
+Class TILESET
+	Field firstgid%
+	Field tw%,th%
+End
+
+'The TLayer class holds all the layer data for the map for a particular layer.
+Class LAYER
+	Field name$
+	Field w%,h%
+	Field data%[]
+End
+
+'The TObject class holds the data for all the objects in an ObjectGroup. It's parent class is TObjectGroup
+Class PIECE
+
+	Field x%,y%
+	Field w%,h%
+	
+	Method GetPieceInt:Int(value$)
+		Return Int(features.Get(value))
+	End
+	
+	Method GetPieceFloat:Float(value$)
+		Return Float(features.Get(value))
+	End
+	
+	Method GetPieceString:String(value$)
+		Return features.Get(value)
+	End
+
+	Method GetPieceBool:Bool(value$)
+		If features.Get(value)="true" Then Return true
+		Return false
+	End
+
+Private
+
+	Field features:=New StringMap<String>
+
+End
+
+'The TObjectGroup class holds all the ObjectGroups. It's parent class is TMap
+Class GROUP
+	Field name$
+	Field pieces:=New List<PIECE>
+End
+
+'This is the main class for bit.tiled. Create an object using this class to load a tiled map and load the resources for that map into memory.
+Class TILED
+
+	Field mw%,mh%
+	Field tileset:=New TILESET
+	Field layers:=New List<LAYER>
+	Field groups:=New List<GROUP>
+	Field img:Image
+
+	'Map holds all the data for the loaded file.
+	Method New(filePath$)
+	
+		Local xmlChild:XMLNode,xmlSubChild:XMLNode
+
+#If CONFIG="debug"
+		Local Error:= New XMLError
+		Local xml:= ParseXML(LoadString("data\"+filePath), Error)
+			
+		If xml = Null And Error.error
+			Print Error.ToString()'error
+		Else
+#Else
+			Local xml:= ParseXML(LoadString("data\"+filePath))
+			If xml
+#endif
+				'Lee los datos del mapa
+				mw = Int(xml.GetAttribute("width"))
+				mh = Int(xml.GetAttribute("height"))
+
+				'Read tileset data
+				xmlChild = xml.GetChild("tileset")
+				tileset.firstgid = Int(xmlChild.GetAttribute("firstgid"))
+				tileset.tw 		 = Int(xmlChild.GetAttribute("tilewidth"))
+				tileset.th 		 = Int(xmlChild.GetAttribute("tileheight"))
+				Local tilecount% = Int(xmlChild.GetAttribute("tilecount"))
+
+				'Lee los datos de la imagen utilizada
+				xmlSubChild=xmlChild.GetChild("image")
+					
+				'Crea un patron de imagenes
+				img = LoadImage(xmlSubChild.GetAttribute("source"),tileset.tw,tileset.th,tilecount)
+
+				'Lee los datos de capa
+				xmlChild = xml.GetChild("layer")
+				While xmlChild.valid
+					Local layer:=New LAYER
+					layer.name = xmlChild.GetAttribute("name")
+					layer.w	   = Int(xmlChild.GetAttribute("width"))
+					layer.h    = Int(xmlChild.GetAttribute("height"))
+
+					xmlSubChild=xmlChild.GetChild("data")
+
+					Local dataStr$[] = xmlSubChild.value.Split(",")
+					layer.data = layer.data.Resize(dataStr.Length())
+							
+					For Local dataIndex%=0 until dataStr.Length()
+						layer.data[dataIndex] = Int(dataStr[dataIndex])
+					Next
+					
+					layers.AddLast(layer)
+					
+					'next item
+					xmlChild = xmlChild.GetNextSibling("layer")
+				wend
+
+				'Read objectgroup data
+				xmlChild = xml.GetChild("objectgroup")
+				While xmlChild.valid
+				
+					Local group:=New GROUP
+					group.name=xmlChild.GetAttribute("name")
+					groups.AddLast(group)
+		
+					xmlSubChild=xmlChild.GetChild("object")
+					While xmlSubChild.valid
+					
+						Local piece:=New PIECE
+						piece.x = Int(xmlSubChild.GetAttribute("x"))
+						piece.y = Int(xmlSubChild.GetAttribute("y"))
+						piece.w = Int(xmlSubChild.GetAttribute("width"))
+						piece.h = Int(xmlSubChild.GetAttribute("height"))
+						groups.Last().pieces.AddLast(piece)
+		
+						Local xmlSubSubChild := xmlSubChild.GetChild("properties")
+						While xmlSubSubChild.valid
+								
+							Local xmlSubSubSubChild := xmlSubSubChild.GetChild("property")
+							While xmlSubSubSubChild.valid
+								groups.Last().pieces.Last().features.Add(xmlSubSubSubChild.GetAttribute("name"),xmlSubSubSubChild.GetAttribute("value"))
+								xmlSubSubSubChild = xmlSubSubSubChild.GetNextSibling("property")'next item
+							Wend
+		
+							xmlSubSubChild = xmlSubSubChild.GetNextSibling("properties")'next item
+						 Wend
+		
+						xmlSubChild = xmlSubChild.GetNextSibling("object")'next item
+					Wend
+
+					xmlChild = xmlChild.GetNextSibling("objectgroup")'next item
+				Wend
+			
+			Endif
+		
+	End
+	
+	Method Render(ox#,oy#,sw%,sh%)
+	
+		'Dibuja el nivel
+		For Local lyr:=Eachin layers
+			For Local i%=0 Until lyr.w*lyr.h
+				Local x% = i Mod lyr.w
+				Local y% = i/lyr.w
+				Local tv%=lyr.data[y*lyr.w+x]
+				If tv>0 And (x*tileset.tw>ox And x*tileset.tw<ox+sw And y*tileset.th>oy And y*tileset.th<oy+sh)
+					DrawImage(img,x*tileset.tw,y*tileset.th,tv-1)   
+				endif             
+			next
+		Next
+		    	
+	end
+
+End

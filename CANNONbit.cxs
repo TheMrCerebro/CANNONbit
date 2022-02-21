@@ -1,0 +1,678 @@
+'*********************************************************************
+'
+' Copyright (c) 2019-2022 TheMrCerebro
+'
+' CANNONbit - Zlib license.
+'
+' This software is provided 'as-is', without any express or
+' implied warranty. In no event will the authors be held
+' liable for any damages arising from the use of this software.
+'
+' Permission is granted to anyone to use this software for any purpose,
+' including commercial applications, and to alter it and redistribute
+' it freely, subject to the following restrictions:
+'
+' 1. The origin of this software must not be misrepresented;
+' you must not claim that you wrote the original software.
+' If you use this software in a product, an acknowledgment
+' in the product documentation would be appreciated but
+' is not required.
+'
+' 2. Altered source versions must be plainly marked as such,
+' and must not be misrepresented as being the original software.
+'
+' 3. This notice may not be removed or altered from any
+' source distribution.
+'
+'*********************************************************************
+
+#GLFW_WINDOW_TITLE="CANNONbit - by TheMrCerebro"
+#GLFW_WINDOW_WIDTH=512
+#GLFW_WINDOW_HEIGHT=512
+#MOJO_IMAGE_FILTERING_ENABLED=False
+
+Import mojo
+
+Import inc.coldet
+Import inc.hscore
+Import inc.autofit
+Import inc.particles
+Import inc.fonts
+Import inc.shapes
+
+Function Main()
+	New Game()
+End
+
+Class METEOR
+	Field x:float,y:float
+End
+
+Class ENERGY
+	Field x:float,y:float
+End
+
+Class STAR
+	Field x:float,y:float,c:int,a:float
+End
+
+Class TAIL
+	Field x:float,y:float,v:float
+end
+
+Class WAVE
+	Field x:float,y:float,r:float
+End
+
+Class ANIMATION
+	Field img:Image
+	Field x:float,y:float
+	Field s:float
+End
+
+Class TYPEWRITER
+	Field txt:string,tmp:string[8]
+	Field i:int,j:int
+	Field x:float,y:float
+	Field t:int
+End
+
+Class Game Extends App
+
+	'constructor
+	Method OnCreate()
+
+		SetVirtualDisplay(64,64)
+		SetUpdateRate(30)
+		Seed = Millisecs()
+
+		LoadFont("terminal.fnt")
+		
+		'Carga las imagenes
+		imgTitle = LoadImage("title.png")
+		imgMeteor = LoadImage("meteor.png",2)
+		imgCross = LoadImage("cross.png",2,Image.MidHandle)
+		imgDamage = LoadImage("damage.png")
+		imgPower = LoadImage("power.png",1,Image.MidHandle)
+		imgCannon = LoadImage("cannon.png",1)
+		imgEnergy = LoadImage("energy.png",4)
+		imgBomb = LoadImage("bomb.png",4,Image.MidHandle)
+		imgExplosion = LoadImage("explosion.png",4,Image.MidHandle)
+		imgBall = LoadImage("ball.png",4,Image.MidHandle)
+		imgFlash = LoadImage("flash.png",4,Image.MidHandle)
+		imgImpact = LoadImage("impact.png",4,Image.MidHandle)
+		imgSeq[0] = LoadImage("seq0.png",1,Image.MidHandle)
+		imgSeq[1] = LoadImage("seq1.png",1,Image.MidHandle)
+		imgSeq[2] = LoadImage("seq2.png",2,Image.MidHandle)
+		imgSeq[3] = LoadImage("seq3.png",4,Image.MidHandle)
+		imgSeq[4] = LoadImage("seq4.png",1,Image.MidHandle)
+		imgSeq[5] = LoadImage("seq5.png",4,Image.MidHandle)
+		
+		'Carga los sonidos
+		sndExplosion = LoadSound("explosion.wav")
+		sndSelect = LoadSound("select.wav")
+		sndLaser = LoadSound("laser.wav")
+		sndImpact = LoadSound("impact.wav")
+		sndHurt = LoadSound("hurt.wav")
+		sndTypeWrite = LoadSound("typewrite.wav")
+		sndSeq[0] = LoadSound("seq0.wav")
+		sndSeq[1] = LoadSound("seq1.wav")
+		sndSeq[2] = LoadSound("seq2.wav")
+		sndOver = LoadSound("over.wav")
+	
+		'Crea el cielo
+		For Local i:int=0 until 16
+			Local str:=New STAR()
+			str.x = Rnd(2,62)
+			str.y = Rnd(2,62)
+			str.c = Rnd(0,3)
+			str.a = Rnd(0,360)
+			strA.AddLast(str)
+			If i<6
+				Local tai:=New TAIL
+				tai.x=Rnd(2,62)
+				tai.y=Rnd(2,62)
+				tai.v=Rnd(0.5,1.0)
+				taiA.AddLast(tai)
+			endif
+		Next
+	
+		'Crea una lista de puntuaciones ficticia
+		AddScore(624,"TMC")
+		AddScore(455,"JPD")
+		AddScore(216,"MGS")
+		AddScore(201,"HDF")
+		AddScore(80,"SMB")
+
+		'Activa la musica
+		PlayMusic("theme.ogg",0)
+
+	end
+		
+	Method OnUpdate()
+		
+		#If TARGET="glfw"
+		If KeyHit(KEY_ESCAPE) Then EndApp()
+		If KeyHit(KEY_F4)
+			fullscreen=Not fullscreen
+			If fullscreen
+				SetDeviceWindow(DesktopMode.Width,DesktopMode.Height,1)
+				HideMouse()
+			Else
+				SetDeviceWindow(512,512,4)
+				ShowMouse()
+			Endif
+		Endif
+		#Endif
+		
+		If fader=0
+			Select state
+			Case STATE_INTRO
+				
+				If seq=750'30*25
+					fader=1
+					ClearAll()
+					init=False
+					state=STATE_MENU
+				Endif
+				
+				If KeyHit(KEY_X)
+					fader=1
+					ClearAll()
+					init=True
+					StopMusic()
+					state=STATE_MENU
+				endif
+				
+			Case STATE_MENU
+
+				If KeyHit(KEY_X)
+
+					cx	   = 32
+					cy	   = 32
+					score  = 0
+					damage = 0
+					power  = 12
+					fader  = 1
+					time   = 0
+
+					For Local i:int=0 until 4
+						Local ene:= New ENERGY
+						ene.x = 2+((i Mod 2)*10)+(42*(i/2))
+						ene.y = 55
+						eneA.AddLast(ene)
+					next
+	
+					PlaySound(sndSelect,1)
+					AddText("READY?",32,16,40)
+					PlayMusic("ingame.ogg",1)
+					state = STATE_INGAME
+					
+				Else
+					
+					If init
+						If seq=30*10
+							fader=1
+							PlayMusic("theme.ogg",0)
+							seq=0
+							state=STATE_INTRO
+						Endif
+						seq += 1
+					endif
+						
+				endif
+				
+			Case STATE_INGAME
+				
+			'Actualiza el cañon laser
+			
+				If KeyDown(KEY_UP) And cy>0 Then cy -= 1
+				If KeyDown(KEY_DOWN) And cy<64 Then cy += 1
+				If KeyDown(KEY_LEFT) And cx>0 Then cx -= 1
+				If KeyDown(KEY_RIGHT) And cx<64 Then cx += 1
+				
+				If power<12
+					power += 2
+				Else
+					If KeyHit(KEY_X) And Not shot
+						shot=true
+						lx=32
+						ly=52
+						ltx=cx
+						lty=cy
+						power=0
+						AddAnimation(imgBall,32,52)
+						PlaySound(sndLaser,2)
+					Endif
+				endif
+	
+			'Actualiza el laser del cañon
+
+				If shot
+					Local dist:float = Distance(ltx,lty,32,52)
+				
+					lx += ((ltx-32)/dist)*2
+					ly += ((lty-52)/dist)*2
+					
+					AddEmitter(lx,ly,0.0,0.0,255,0,255,1,0.05)	
+							
+					If Distance(lx,ly,32,52) >= dist
+					
+						PlaySound(sndHurt,3)
+						AddAnimation(imgExplosion,lx,ly)
+						
+						For Local met:=Eachin metA
+							If Distance(ltx,lty,met.x+4,met.y+4)<6
+								score += (dist/2)
+								AddWave(met.x+4,met.y+4,6)
+								AddEmitter(lx,ly,0.0,0.0,255,0,0,16,0.05)	
+								PlaySound(sndImpact,4)
+								metA.RemoveEach(met)
+							Endif
+						Next	
+						
+						shot=false
+					Endif
+				endif
+
+				'Cada cierto tiempo hace apareder un meteorito
+				If time >= (60-(score/10)*60/100)
+					Local met:=New METEOR
+					met.x = Int(Rnd(0,8))*8'Int(Rnd(1,30))*2
+					met.y = -4
+					metA.AddLast(met)
+					time=0
+				Endif
+				time += 1
+				
+				'Actualiza los meteoritos
+				For Local met:=Eachin metA
+							
+					'Si el meteorito colisiona con el jugador...
+					If rectCircle(met.x+2,met.y,4,8,32,60,12)
+						ClearAll()
+						CheckScore()			
+						PlaySound(sndExplosion,5)
+						fader=1
+						PlayMusic("over.ogg",1)
+						state=STATE_OVER
+					Else
+							
+						met.y += 1.0
+						AddEmitter(met.x+4+Rnd(-0.5,0.5),met.y+4+Rnd(-0.5,0.5),0.0,0.0,255,0,0,1,0.05)
+						
+						'Si un meteorito colosiona con el suelo
+						If met.y>56
+							AddWave(met.x+4,met.y+4,6)
+							AddAnimation(imgImpact,met.x+4,59)
+							shake=5
+							damage += Int(Rnd(5,10))
+							If score>0 Then score -= 1
+							PlaySound(sndExplosion,5)
+							metA.RemoveEach(met)
+						Endif
+					
+						'Si el meteorito colisiona con alguna fuente de energia...
+						For Local ene:=Eachin eneA
+							If rectRect(met.x+2,met.y,4,8,ene.x+1,ene.y+2,6,6)
+								AddWave(met.x+4,met.y+4,6)
+								AddEmitter(met.x+4,met.y+4,0.0,0.0,255,0,0,16,0.05)	
+								AddAnimation(imgFlash,ene.x+4,ene.y+4)
+								PlaySound(sndExplosion,5)
+								shake=10
+								eneA.RemoveEach(ene)
+								metA.RemoveEach(met)
+							endif
+						next
+											
+					Endif
+						
+				Next
+					
+				'Si el daño en la luna es mayor o igual a 100 o si las fuentes de energia han sido destruidas (cantidad = a 0)...
+				If damage>99 Or eneA.IsEmpty()
+					ClearAll()
+					CheckScore()		
+					fader=1
+					PlaySound(sndExplosion,5)
+					PlayMusic("over.ogg",1)
+					state=STATE_OVER
+				endif
+			
+			Case STATE_OVER
+
+				'Si hay una nueva puntuacion...
+				If seq>80
+					If ranking
+						EnterPlayer(sndLaser)
+			        Else
+						If KeyHit(KEY_X)
+							txt=""
+							fader=1
+							score=0
+							PlaySound(sndSelect,1)
+							StopMusic()
+							init=True
+							ClearAll()
+							state=STATE_MENU
+						Endif
+			        Endif
+				endif
+			End
+		endif
+
+	'Actualiza las animaciones
+	
+		For Local anm:=Eachin anmA
+			If anm.s>=3 Then anmA.RemoveEach(anm) Else anm.s += 0.5
+		Next
+				
+	'Actualiza las particulas
+		UpdateParticles()
+
+	'Actualiza el cielo
+
+		'Actualiza las estrellas
+		For Local str:=Eachin strA
+			If str.x>64 Then str.x=-1 Else str.x += 0.01
+			If str.y>64 Then str.y=-1 Else str.y += 0.01
+			If str.a>360 Then str.a=0 Else str.a += 5
+		Next
+			
+		'Actualiza los meteoros distantes
+		For Local tai:=Eachin taiA
+			AddEmitter(tai.x,tai.y,0.0,0.0,192,0,0,1,0.05)
+			If tai.y>64
+				tai.x=Rnd(2,62)
+				tai.v=Rnd(0.5,1.0)
+				tai.y=0
+			Endif
+			tai.y += tai.v
+		Next
+
+	'Actualiza las ondas
+
+		For Local wav:=Eachin wavA
+			If wav.r>1 Then wav.r -= 0.5 Else wavA.RemoveEach(wav)
+		Next
+		
+	'Actualiza la maquina de escribir
+		
+		For Local twr:=Eachin twrA
+			If twr.j<twr.txt.Length
+				Local c:string=String.FromChar(twr.txt[twr.j])
+				If c="/" Then twr.i += 1 Else twr.tmp[twr.i] += c
+				twr.j += 1	
+				PlaySound(sndTypeWrite,8)				
+			Endif
+			If twr.t=0 Then twrA.RemoveEach(twr) Else twr.t -= 1
+		next
+		
+	'Actualiza el oscurecimiento d epantalla
+	
+		If fader>0.05 Then fader -= 0.05 Else fader=0
+		
+	End
+
+    Method OnRender()
+		
+	    UpdateVirtualDisplay()
+	    
+		'Actualiza el temblor de la pantalla
+		If shake>0
+			Translate(Rnd(-1,1),Rnd(-1,1))
+			shake -= 1
+		Endif
+			
+		'Dibuja las estrellas
+		For Local str:=Eachin strA	
+			If str.c=0 Then SetColor(255,0,255)
+			If str.c=1 then SetColor(0,255,255)
+			If str.c=2 Then SetColor(255,255,255)			
+			SetAlpha(0.5+Cos(str.a)*0.5)
+			Point(str.x,str.y)					
+		Next
+
+		If wavA.Count()>0 Then SetColor(192,192,192)
+		For Local wav:=Eachin wavA
+			SetAlpha(1.0-(1.0/wav.r))
+			Circle(wav.x,wav.y,wav.r)
+		Next
+		
+		'Dibuja las particulas
+		DrawParticles()
+					
+		Select state
+		
+		Case STATE_INTRO
+					
+			'----------------------
+			If seq>0 And seq<30*15
+				DrawImage(imgSeq[0],32,32,0.0,1+seqs,1+seqs)
+				seqs += 0.001
+			endif
+			If seq=0 Then AddText("This is/THE MOON",32,0,30*5)
+			If seq=30*2 Then AddText("First defense/of THE EARTH",32,47,30*3)
+			If seq=30*6 Then AddText("Inside are/the facilities",32,0,30*7)
+			If seq=30*8 Then AddText("And the most/powerful weapon",32,47,30*5)
+			If seq>30*12 And seq<30*15 Then seqs += 0.005
+			If seq=30*15
+				PlaySound(sndSeq[1],1,1)
+				fader=1
+			endif
+			'------------------------
+			
+			If seq>30*15 And seq<30*20
+				DrawImage(imgSeq[2],32,16,0.01*Millisecs() Mod 2)
+				DrawImage(imgSeq[2],32,48,0.01*Millisecs() Mod 2)
+				seqm+=0.5
+				DrawImage(imgSeq[3],32,64-seqm)
+			Endif
+			If seq=30*20 Then seqm=0.0
+			
+			'----------------------
+			
+			If seq>30*20 And seq<30*30
+				Local anm:int
+				DrawImage(imgSeq[1],32,32)
+				If seq=660 Then PlaySound(sndSeq[2],2)
+				If seq=661 Then shake=10
+				If seq>660 Then anm=1
+				If seq>665 Then anm=2
+				If seq>670 Then anm=3
+				If seq=680 Then PlaySound(sndSeq[0],3)
+				If seq=681 Then AddAnimation(imgSeq[5],32,32-8)
+				If seqm<29 Then seqm +=0.5 Else StopChannel(1)
+				DrawImage(imgSeq[3],32,64-seqm,anm)
+				DrawImage(imgSeq[4],32,48-5)
+			endif
+
+			If seq=30*23 Then AddText("-THE ONIMUS-/A LASER CANNON",32,2,30*4)
+
+			SetColor(0,0,0)
+			Rect(0,0,64,4)
+			Rect(0,60,64,4)
+			
+			seq += 1
+			
+		Case STATE_MENU
+				
+			DrawImage(imgTitle,0,4)
+			Text("[TheMrCerebro]",32,58,0.5,0.5)
+			
+			SetAlpha(0.5+Cos(0.5 * Millisecs() Mod 360)*0.5)
+			Text("Press",32,26,0.5,0.5)
+			Text("-X-",32,26+7,0.5,0.5)
+			Text("to START",32,26+7+7,0.5,0.5)
+				
+		Case STATE_INGAME
+
+			'Dibuja los meteoritos
+			For Local met:=Eachin metA
+				DrawImage(imgMeteor,met.x,met.y,0.01*Millisecs() Mod 2)
+			Next
+		
+			'Dibuja las fuentes de energia
+			For Local ene:=Eachin eneA
+				DrawImage(imgEnergy,ene.x,ene.y,0.01*Millisecs() Mod 4)
+			Next
+
+			DrawImage(imgCannon,23,64-13)
+
+			DrawImage(imgCross,cx,cy,0.01*Millisecs() Mod 2)
+		
+			Text(score,62,0,1,0)
+			
+			'Muestra el porcentaje de daño de la luna
+			DrawImage(imgDamage,0,0)
+			Text(damage+"%",8,0)
+			
+			'Muestra la carga de energia del cañon
+			DrawImage(imgPower,32,4.5)
+			SetColor(255,0,255)
+			Rect(32-power/2,3,power,3)
+			
+			'Dibuja el suelo
+			SetColor(192,192,192)
+			Line(0,63,64,63)
+				
+		Case STATE_OVER
+
+			If seq<80 Then DrawImage(imgSeq[0],32,32)
+				
+			If seq>5 And seq<80
+				AddAnimation(imgBomb,Rnd(16,48),Rnd(16,48))
+				PlaySound(sndSeq[1])
+			endif
+
+			If seq=80
+				AddWave(32,32,24)
+				AddEmitter(32,32,0.0,0.0,255,255,255,128,0.025)
+				PlaySound(sndOver)
+				fader=1
+			endif
+			
+			If seq>80
+				DrawScores(0,255,0,0,255,0)
+			endif
+
+			seq += 1
+				
+		End
+	
+		'dibuja las animaciones
+		If anmA.Count()>0
+			SetAlpha(1.0)
+			SetColor(255,255,255)
+		Endif
+		For Local anm:=Eachin anmA
+			DrawImage(anm.img,anm.x,anm.y,anm.s)
+		Next
+
+		If twrA.Count()>0 Then SetColor(0,192,0)
+		For Local twr:=Eachin twrA
+			For Local i:int=0 Until twr.tmp.Length()
+				Text(twr.tmp[i],twr.x,twr.y+(i*7),0.5)
+			next
+		Next
+		
+		If fader>0
+			SetColor(255,255,255)
+			SetAlpha(fader)
+			Rect(0,0,64,64)
+		Endif
+		
+	End
+	
+	Method AddText:void(txt:string,x:float,y:float,t:int)
+		Local twr:=New TYPEWRITER
+		twr.txt=txt
+		twr.x=x
+		twr.y=y
+		twr.t=t
+		twrA.AddLast(twr)
+	End
+	
+	Method AddAnimation:Void(img:Image,x:float,y:float)
+		Local anm:=New ANIMATION
+		anm.img=img
+		anm.x=x
+		anm.y=y
+		anmA.AddLast(anm)
+	End
+
+	Method AddWave:void(x:float,y:float,r:float)
+		Local wav:=New WAVE
+		wav.x=x-0.5
+		wav.y=y-0.5
+		wav.r=r
+		wavA.AddLast(wav)
+	End
+	
+	Method ClearAll:Void()
+
+		seq=0
+		shake=0
+		seqm=0
+		seqs=0
+		
+		metA.Clear()
+		eneA.Clear()
+		anmA.Clear()
+		parA.Clear()
+		wavA.Clear()
+		twrA.Clear()
+		
+	End
+	
+	Function Distance:float(x:float,y:float,a:float,b:float)
+		return Sqrt(Pow(x-a,2)+Pow(y-b,2))
+	End
+	
+Private
+
+	'listas
+	Field metA:=New List<METEOR>
+	Field eneA:=New List<ENERGY>
+	Field anmA:=New List<ANIMATION>
+	Field wavA:=New List<WAVE>
+	Field strA:=New List<STAR>
+	Field twrA:=New List<TYPEWRITER>
+	Field taiA:=New List<TAIL>
+
+	'imagenes
+	Field imgTitle:Image
+	Field imgMeteor:Image
+	Field imgCross:Image
+	Field imgPower:Image
+	Field imgCannon:Image
+	Field imgBall:Image
+	Field imgBomb:Image
+	Field imgExplosion:Image
+	Field imgEnergy:Image
+	Field imgFlash:Image
+	Field imgImpact:Image
+	Field imgDamage:Image
+	Field imgSeq:Image[6]
+	
+	'sonidos
+	Field sndLaser:Sound
+	Field sndSelect:Sound
+	Field sndExplosion:Sound
+	Field sndImpact:Sound
+	Field sndHurt:Sound
+	Field sndTypeWrite:Sound
+	Field sndSeq:Sound[3]
+	Field sndOver:Sound
+	
+	'variables
+	Enumerate STATE_INTRO,STATE_MENU,STATE_INGAME,STATE_OVER
+	Field state:int=STATE_INTRO,fullscreen:bool
+	Field cx:float,cy:float,damage:int,power:float,shot:bool
+	Field init:bool
+	Field time:int
+	Field fader:float,shake:int
+	Field lx:float,ly:float,ltx:float,lty:float
+	Field seq:int,seqm:float,seqs:float
+	
+End

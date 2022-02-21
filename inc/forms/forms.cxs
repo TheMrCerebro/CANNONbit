@@ -1,0 +1,47 @@
+import mojo
+
+Function Point(x#,y#)
+	DrawRect x,y,1,1
+End
+
+Function Line(x0#,y0#,x1#,y1#)
+
+	Local x# = x1 - x0
+	Local y# = y1 - y0
+	Local mx# = Max(Abs(x),Abs(y))
+	x /= mx
+	y /= mx
+	For Local n%=0 To mx
+		DrawRect x0,y0,1,1
+		x0 += x
+		y0 += y
+	Next
+
+End
+
+Function Rect(x#,y#,w#,h#,filled?=false)
+
+	If filled
+		Line(x,y,x+w,y)
+		Line(x,y+h,x+w,y+h)
+		Line(x,y,x,y+h)
+		Line(x+w,y,x+w,y+h)
+	else
+		DrawRect x,y,w,h
+	Endif
+	
+End
+
+Function Circle(ox#,oy#,r#,filled?=False)
+
+	For Local y=-r To r
+    	For Local x=-r To r
+    		If filled
+				If (x*x+y*y > r*r-r And x*x+y*y < r*r+r) Then DrawRect ox+x,oy+y,1,1
+			else
+				If x*x+y*y <= r*r Then DrawRect ox+x,oy+y,1,1
+			endif
+		Next
+	Next
+
+End
